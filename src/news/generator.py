@@ -4,11 +4,13 @@ AI News Generator using configurable LLM providers
 from typing import List, Optional, Dict
 import json
 import re
+from datetime import datetime, timezone, timedelta
 from ..logger import setup_logger
 from ..config import LANGUAGE_NAMES
 from .web_search import WebSearchTool, get_search_tool_definition
 from .fetcher import NewsFetcher
 from ..llm_providers import get_llm_provider
+from ..storage.supabase_storage import save_news_items_to_supabase
 
 
 logger = setup_logger(__name__)
@@ -50,6 +52,35 @@ class NewsGenerator:
             f"NewsGenerator initialized with {self.provider.provider_name} "
             f"(model: {self.provider.model}, web_search: {enable_web_search})"
         )
+
+    def _translate_text(self, text: str, target_language: str = "zh") -> str:
+        """
+        Use the configured LLM provider to translate text into target_language.
+        Currently used to translate RSS 英文标题 / 简介为中文，便于列表展示。
+
+        If translation fails for any reason, returns original text.
+        """
+        if not text.strip():
+            return text
+
+        try:
+            # 为了避免 prompt 太长，这里限制单段长度
+            snippet = text.strip()
+            if len(snippet) > 800:
+                snippet = snippet[:800]
+
+            prompt = (
+                "请将下面这段英文航空新闻内容翻译成自然流畅的简体中文，用于内部市场简报列表展示；"
+                "保留公司名、机型名、地名等专有名词的英文写法，只返回译文正文，不要添加任何说明。\n\n"
+                f"原文：\n{snippet}"
+            )
+            messages = [{"role": "user", "content": prompt}]
+            translated = self.provider.generate(messages=messages, max_tokens=600)
+            # 简单清理一下首尾空白
+            return translated.strip()
+        except Exception as e:
+            logger.warning(f"Translation failed, fallback to original text: {e}")
+            return text
 
     def _format_news_with_ids(self, news_data: Dict) -> tuple:
         """
@@ -98,6 +129,46 @@ class NewsGenerator:
 
         return formatted, news_items
 
+    def _enforce_freshness_strict(
+        self,
+        items: List[Dict[str, str]],
+        hours_back: Optional[int],
+        keep_undated: bool,
+    ) -> List[Dict[str, str]]:
+        """
+        严格新鲜度校验（最终兜底）。
+        - hours_back=None: 不做时间过滤
+        - keep_undated=False: 解析不出时间的一律丢弃
+        """
+        if hours_back is None or hours_back <= 0:
+            return items
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+        kept: List[Dict[str, str]] = []
+        dropped_old = 0
+        dropped_undated = 0
+
+        for item in items:
+            dt = self.news_fetcher._parse_published_date(item.get("published", ""))
+            if dt is None:
+                if keep_undated:
+                    kept.append(item)
+                else:
+                    dropped_undated += 1
+                continue
+            if dt >= cutoff:
+                kept.append(item)
+            else:
+                dropped_old += 1
+
+        if dropped_old or dropped_undated:
+            logger.warning(
+                f"Strict freshness enforced ({hours_back}h): dropped_old={dropped_old}, "
+                f"dropped_undated={dropped_undated}, kept={len(kept)}"
+            )
+
+        return kept
+
     def generate_news_digest_from_sources(
         self,
         max_tokens: int = 8000,
@@ -125,17 +196,28 @@ class NewsGenerator:
             Exception: If fetching or generation fails
         """
         try:
-            # Fetch real-time news
+            # Fetch real-time news（仅保留最近 N 小时内发布的，由 config 的 max_hours_back 控制）
+            from ..config import Config
+            _config = Config()
+            hours_back = _config.max_hours_back
+            keep_undated = _config.keep_undated
             logger.info("Fetching real-time AI news from sources...")
             news_data = self.news_fetcher.fetch_recent_news(
                 language=language,
-                max_items_per_source=max_items_per_source
+                max_items_per_source=max_items_per_source,
+                hours_back=hours_back,
+                keep_undated=keep_undated,
             )
 
             if not news_data['international'] and not news_data['domestic']:
-                error_msg = "No news items fetched from RSS sources. Please check your network connection or RSS feed availability."
-                logger.error(error_msg)
-                raise Exception(error_msg)
+                # 严格要求：宁可日报为空，也不要混入旧新闻
+                logger.warning(
+                    f"No news items within freshness window (hours_back={hours_back}, keep_undated={keep_undated}). "
+                    f"Return empty digest."
+                )
+                if language and language.lower() == "zh":
+                    return "## 今日航空日报\n\n过去 24 小时内未抓取到符合条件的全球航空热点新闻（已严格丢弃旧闻与无发布时间新闻）。"
+                return "## Aviation Daily Digest\n\nNo qualifying news items were found in the last 24 hours (old/undated items were strictly discarded)."
 
             # Format news with unique IDs for selection
             formatted_news, news_items = self._format_news_with_ids(news_data)
@@ -193,6 +275,38 @@ class NewsGenerator:
 
             logger.info(f"Stage 1 completed: Selected {len(selected_ids)} news items")
             logger.debug(f"Selected IDs: {selected_ids}")
+
+            # After Stage 1: store structured selected items into Supabase (if configured)
+            selected_items_for_storage = []
+            for news_id in selected_ids:
+                item = news_items[news_id]
+                # 为列表展示准备结构化数据：如果目标语言是中文，则在入库前做一次标题/简介翻译
+                item_for_storage = dict(item)
+                if language and language.lower() == "zh":
+                    item_for_storage["title"] = self._translate_text(
+                        item_for_storage.get("title", ""), target_language="zh"
+                    )
+                    item_for_storage["description"] = self._translate_text(
+                        item_for_storage.get("description", ""), target_language="zh"
+                    )
+
+                selected_items_for_storage.append(item_for_storage)
+
+            if selected_items_for_storage:
+                # 入库前最后兜底：再次严格校验“发布时间在窗口内”
+                selected_items_for_storage = self._enforce_freshness_strict(
+                    selected_items_for_storage,
+                    hours_back=hours_back,
+                    keep_undated=keep_undated,
+                )
+
+            if selected_items_for_storage:
+                save_news_items_to_supabase(
+                    language=language,
+                    items=selected_items_for_storage,
+                )
+            else:
+                logger.warning("After strict freshness check, 0 items left to store. Skip Supabase storage.")
 
             # ============================================================
             # STAGE 2: Summarization - Create detailed summaries

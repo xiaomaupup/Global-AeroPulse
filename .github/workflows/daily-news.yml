@@ -1,9 +1,9 @@
 name: Daily AI News Digest
 
 on:
-  # Run daily at 0:00 AM UTC (adjust as needed)
+  # 每天早上 9:00 北京时间 = 1:00 UTC（航空日报定时推送）
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 1 * * *"
 
   # Allow manual trigger
   workflow_dispatch:

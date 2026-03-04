@@ -237,6 +237,23 @@ For each news item:
         return self.config_data.get("news", {}).get("max_items_per_source", 5)
 
     @property
+    def max_hours_back(self) -> Optional[int]:
+        """Only keep news published within this many hours (None or 0 = no filter)."""
+        val = self.config_data.get("news", {}).get("max_hours_back")
+        if val is None:
+            return 24
+        try:
+            n = int(val)
+            return n if n > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def keep_undated(self) -> bool:
+        """Whether to keep items with missing/unparseable published time."""
+        return bool(self.config_data.get("news", {}).get("keep_undated", False))
+
+    @property
     def llm_provider(self) -> str:
         """Get the LLM provider to use (claude or deepseek)"""
         # Check environment variable first, then config file

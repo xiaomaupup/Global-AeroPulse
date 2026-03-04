@@ -1,9 +1,10 @@
 """
-News fetcher module - Fetches real-time AI news from various sources
+News fetcher module - Fetches real-time aviation industry news from various sources
 """
 import requests
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+from email.utils import parsedate_to_datetime
 import xml.etree.ElementTree as ET
 from ..logger import setup_logger
 
@@ -12,53 +13,34 @@ logger = setup_logger(__name__)
 
 
 class NewsFetcher:
-    """Fetch real-time AI news from RSS feeds and news APIs"""
+    """Fetch real-time aviation industry news from RSS feeds and news APIs"""
 
     def __init__(self):
         """Initialize the news fetcher"""
-        # RSS feed sources for AI news (reliable sources only)
+        # RSS feed sources for global civil aviation / commercial aviation news
         self.rss_feeds = {
-            # Major Tech Media
-            "TechCrunch AI": "https://techcrunch.com/tag/artificial-intelligence/feed/",
-            "VentureBeat AI": "https://venturebeat.com/category/ai/feed/",
-            "MIT Technology Review": "https://www.technologyreview.com/feed/",
-            "Ars Technica AI": "https://arstechnica.com/tag/ai/feed/",
-            "Wired AI": "https://www.wired.com/feed/tag/ai/latest/rss",
-            "The Next Web": "https://thenextweb.com/feed",
-            "The Verge AI": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
-            "Engadget AI": "https://www.engadget.com/tag/ai/rss.xml",
+            # 1. 行业综述与突发新闻（已验证可用）
+            "FlightGlobal": "https://www.flightglobal.com/135.rss",
+            "Simple Flying": "https://simpleflying.com/feed/",
 
-            # Official AI Company Blogs
-            "OpenAI Blog": "https://openai.com/blog/rss/",
-            "Google AI Blog": "https://blog.google/technology/ai/rss/",
-            "DeepMind Blog": "https://deepmind.google/blog/rss.xml",
-            "Meta AI Blog": "https://ai.meta.com/blog/rss/",
-            "Microsoft AI Blog": "https://blogs.microsoft.com/ai/feed/",
+            # 2. 深度分析与竞争对手动态
+            "Leeham News": "https://leehamnews.com/feed/",
+            # Airbus 官方全量新闻/新闻稿 RSS（经 2026 年页面更新）
+            # 参考：https://www.airbus.com/en/rss-feeds
+            "Airbus Global Newsroom": "https://www.airbus.com/en/generate-rss-feeds?type=all-press-releases",
+            # Boeing 全部新闻稿 RSS（官方提供）
+            # 参考：https://boeing.mediaroom.com/rss-feeds
+            "Boeing Newsroom": "https://boeing.mediaroom.com/news-releases-statements?pagetemplate=rss",
 
-            # Research & Academic
-            "arXiv AI": "https://rss.arxiv.org/rss/cs.AI",
-            "arXiv Machine Learning": "https://rss.arxiv.org/rss/cs.LG",
-            "arXiv Computer Vision": "https://rss.arxiv.org/rss/cs.CV",
-            "arXiv NLP": "https://rss.arxiv.org/rss/cs.CL",
-
-            # Industry Verticals
-            "Healthcare IT News AI": "https://www.healthcareitnews.com/taxonomy/term/31/feed",
-            "Robotics Business Review": "https://www.roboticsbusinessreview.com/feed/",
-            "Autonomous Vehicle News": "https://www.autonomousvehicleinternational.com/feed",
+            # 3. 监管与行业政策（通过第三方聚合/公开 RSS）
+            # IATA 官方新闻的 follow.it RSS 聚合
+            "IATA Press Releases": "https://follow.it/iata-press-releases/rss",
         }
 
-        # Chinese AI news sources (zh)
-        self.chinese_feeds = {
-            # Tech News Outlets
-            "36Kr (36氪)": "https://36kr.com/feed",
-            "JiQiZhiXin (机器之心)": "https://www.jiqizhixin.com/rss",
-            "Leiphone (雷锋网)": "https://www.leiphone.com/feed",
-            "iFeng Tech (凤凰科技)": "https://tech.ifeng.com/rss/index.xml",
-            "Sina Tech (新浪科技)": "http://rss.sina.com.cn/tech/rollnews.xml",
-            # Google News (fallback)
-            "Google News AI (CN)": "https://news.google.com/rss/search?q=人工智能+AI&hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
-            "Google News LLM (CN)": "https://news.google.com/rss/search?q=大模型+GPT+Claude&hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
-        }
+        # Chinese aviation news sources (zh)
+        # TODO: 可以在这里补充中国民航局 / 民航资源网 / 航空公司等中文民航 RSS 源
+        # 当前为空，则中文场景下只使用国际航空来源。
+        self.chinese_feeds = {}
 
         # Japanese AI news sources (ja)
         self.japanese_feeds = {
@@ -212,12 +194,19 @@ class NewsFetcher:
                     link = item.find('link')
                     description = item.find('description')
                     pub_date = item.find('pubDate')
+                    # Some feeds use Dublin Core for date
+                    dc_date = item.find('{http://purl.org/dc/elements/1.1/}date')
+                    published_text = ""
+                    if pub_date is not None and pub_date.text:
+                        published_text = pub_date.text
+                    elif dc_date is not None and dc_date.text:
+                        published_text = dc_date.text
 
                     items.append({
                         'title': title.text if title is not None else '',
                         'link': link.text if link is not None else '',
                         'description': self._clean_html(description.text if description is not None else ''),
-                        'published': pub_date.text if pub_date is not None else '',
+                        'published': published_text,
                     })
             else:
                 # Atom format
@@ -227,13 +216,19 @@ class NewsFetcher:
                     title = entry.find('atom:title', namespace)
                     link = entry.find('atom:link', namespace)
                     summary = entry.find('atom:summary', namespace)
+                    published = entry.find('atom:published', namespace)
                     updated = entry.find('atom:updated', namespace)
+                    published_text = ""
+                    if published is not None and published.text:
+                        published_text = published.text
+                    elif updated is not None and updated.text:
+                        published_text = updated.text
 
                     items.append({
                         'title': title.text if title is not None else '',
                         'link': link.get('href', '') if link is not None else '',
                         'description': self._clean_html(summary.text if summary is not None else ''),
-                        'published': updated.text if updated is not None else '',
+                        'published': published_text,
                     })
 
             logger.info(f"Fetched {len(items)} items from RSS feed")
@@ -249,22 +244,53 @@ class NewsFetcher:
         clean = re.compile('<.*?>')
         return re.sub(clean, '', text).strip()
 
+    def _parse_published_date(self, published_str: str) -> Optional[datetime]:
+        """
+        将 RSS/Atom 的 published 字符串解析为 UTC 时间（timezone-aware）。
+        解析失败则返回 None（由上层决定是否丢弃未标注时间的新闻）。
+        """
+        if not published_str or not published_str.strip():
+            return None
+        s = published_str.strip()
+        try:
+            # RFC 2822 常见于 RSS，如 "Wed, 26 Feb 2026 12:00:00 GMT"
+            dt = parsedate_to_datetime(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except (ValueError, TypeError):
+            pass
+        try:
+            # ISO 8601 常见于 Atom，如 "2026-02-26T12:00:00Z"
+            s_iso = s.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(s_iso)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except (ValueError, TypeError):
+            pass
+        return None
+
     def fetch_recent_news(
         self,
         language: str = "en",
-        max_items_per_source: int = 5
+        max_items_per_source: int = 5,
+        hours_back: Optional[int] = 24,
+        keep_undated: bool = False,
     ) -> Dict[str, List[Dict[str, str]]]:
         """
-        Fetch recent AI news from all configured sources.
+        Fetch recent aviation news from all configured sources.
 
         Args:
             language: Language code for the response
             max_items_per_source: Maximum items to fetch per source
+            hours_back: Only keep items published within this many hours (default 24).
+                        None = no time filter.
 
         Returns:
             Dictionary with 'international' and 'domestic' news lists
         """
-        logger.info("Fetching recent AI news from all sources...")
+        logger.info("Fetching recent aviation news from all sources...")
 
         all_news = {
             'international': [],
@@ -297,13 +323,31 @@ class NewsFetcher:
         feeds = language_feeds_map.get(language)
         if not feeds:
             logger.warning(f"No domestic feeds configured for language: {language}, using international only")
-            return all_news
+            feeds = {}
 
         for source_name, feed_url in feeds.items():
             items = self.fetch_rss_feed(feed_url, max_items_per_source)
             for item in items:
                 item['source'] = source_name
                 all_news['domestic'].append(item)
+
+        # 只保留最近 hours_back 小时内发布的新闻
+        # 默认严格：解析不出时间的条目丢弃（keep_undated=True 可保留未标注时间的新闻）
+        if hours_back is not None and hours_back > 0:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+            def within_window(item: Dict[str, str]) -> bool:
+                dt = self._parse_published_date(item.get("published", ""))
+                if dt is None:
+                    return bool(keep_undated)
+                return dt >= cutoff
+            intl_before = len(all_news["international"])
+            dom_before = len(all_news["domestic"])
+            all_news["international"] = [i for i in all_news["international"] if within_window(i)]
+            all_news["domestic"] = [i for i in all_news["domestic"] if within_window(i)]
+            logger.info(
+                f"Filtered to last {hours_back}h: international {intl_before} -> {len(all_news['international'])}, "
+                f"domestic {dom_before} -> {len(all_news['domestic'])}"
+            )
 
         logger.info(
             f"Fetched {len(all_news['international'])} international news items "
@@ -322,7 +366,7 @@ class NewsFetcher:
         Returns:
             Formatted news text
         """
-        formatted = "# Recent AI News Items to Summarize\n\n"
+        formatted = "# Recent Aviation News Items to Summarize\n\n"
 
         if news_data['international']:
             formatted += "## International News\n\n"

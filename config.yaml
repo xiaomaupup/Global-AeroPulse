@@ -22,99 +22,73 @@ news:
   # Maximum news items to fetch per source (fetch more for AI to select from)
   max_items_per_source: 10
 
+  # 只保留最近 N 小时内发布的新闻（航空日报建议 24；设为 0 或注释掉则不按时间过滤）
+  max_hours_back: 24
+
+  # 是否保留“没有发布时间/解析不出发布时间”的新闻
+  # 建议保持 false，确保“最近24小时”严格可控
+  keep_undated: false
+
   # Stage 1: Selection prompt template
   # Placeholders: {total_items}, {formatted_news}
   stage1_prompt_template: |
       {formatted_news}
 
-      ## YOUR TASK - STAGE 1: NEWS SELECTION
+      第一阶段：新闻情报筛选 (STAGE 1: NEWS SELECTION)
+      角色设定：
+      您是中国商用飞机有限责任公司（COMAC）营销中心（市场部）的资深市场情报专家。请从上述 {total_items} 条全球航空新闻中，筛选出不少于18条对商飞最具“市场战略价值”的新闻。
+      筛选标准（按优先级排序）：
+      ✅ 核心竞品动态： 波音 737 MAX、空客 A320neo 系列的订单签单、交付进度、产能爬坡、价格/折扣策略、重大技术改进或故障。
+      ✅ 全球客户与机队战略： 航空公司（尤其是东南亚、中东、非洲、“一带一路”沿线）的选型招标、机队退役/引进计划、航线网络扩张对 150-220 座级飞机的需求。
+      ✅ 租赁公司动向： 头部租赁公司（如 AerCap, Air Lease Corp, BOC Aviation）的采购动向及对资产残值的评价。
+      ✅ 供应链与动力系统： CFM（LEAP）、赛峰、GE 的供应稳定性、可靠性问题（如维修周期 TAT 延迟）、核心系统供应商的并购或危机。
+      ✅ 国际准入与适航： CAAC、FAA、EASA 的双边适航进展、海外市场运行许可、碳税政策（CORSIA）及国际民航组织的新标准。
+      ✅ 低碳与前瞻技术： SAF 燃料、氢能、新材料对未来机型竞争力的影响（关注其如何改变营销话术和市场准入）。
+      ✅ 产业格局： 影响全球民机市场竞争平衡的兼并重组、贸易壁垒或出口管制政策。
 
-      You are a senior AI industry analyst. Analyze the {total_items} news items above and select exactly 15-20 of the highest-quality items.
-
-      ### SELECTION CRITERIA:
-      - ✅ Groundbreaking research or technical breakthroughs
-      - ✅ Major product launches or significant updates
-      - ✅ Important policy changes or regulations
-      - ✅ Large funding rounds or M&A activities
-      - ✅ Balanced coverage across categories (LLM, Agents, Research, Products, etc.)
-      - ✅ Include both international and domestic news when available
-      - ✅ Prefer primary sources over secondary reporting
-
-      ### OUTPUT FORMAT:
-      Return ONLY a JSON array of selected news IDs. No explanations, no markdown, just the JSON array.
-
-      Example format:
-      ["INT-1", "INT-5", "DOM-2", "INT-12", ...]
-
-      CRITICAL: Select exactly 15-20 items. No more, no less.
+      排除/降级：
+      ❌ 已知国内动态： 除非具有重大国际反响，否则排除国内主流媒体已广泛报道的商飞日常新闻（营销部已有渠道获取）。
+      ❌ 纯技术/学术： 缺乏商业应用前景的纯实验室技术论文。
+      ❌ 非相关机型： 纯通用航空（轻型私人飞机）、小型通勤飞机或纯军事项目（除非涉及技术封锁风险）。
+      输出格式：
+      仅返回选定新闻 ID 的 JSON 数组。不要解释，不要使用 Markdown 格式，只需 JSON 数组。
+      示例格式：["INT-1", "INT-5", "DOM-2", ...]
+      限制条件：
+      严格筛选发布时间为24小时内的实时动态。若新闻内容提及“上周”、“上个月”或已知属于旧闻（如数月前的订单重复报道），请直接剔除。
 
   # Stage 2: Summarization prompt template (complete prompt for creating the digest)
   # Placeholders: {count}, {selected_news}
   stage2_prompt_template: |
-      You are a senior AI industry analyst. Create a comprehensive, in-depth news digest for the {count} pre-selected news items below.
-
-      {selected_news}
-
-      ## OUTPUT STRUCTURE:
-
-      Organize news items into relevant categories (use only categories that have news):
-      1. **Large Language Models & Foundation Models** - LLM updates, new model releases, benchmarks
-      2. **AI Agents & Autonomous Systems** - Agent frameworks, autonomous AI developments
-      3. **Multimodal AI** - Vision, audio, video AI capabilities
-      4. **Research & Academic Breakthroughs** - Papers, scientific discoveries, new methods
-      5. **Product Launches & Updates** - New products, feature releases, API updates
-      6. **AI Infrastructure & Hardware** - Chips, GPUs, training infrastructure, cloud services
-      7. **Healthcare & Biomedical AI** - Medical AI, drug discovery, diagnostics
-      8. **Robotics & Autonomous Vehicles** - Robots, self-driving, embodied AI
-      9. **Enterprise & Industry Applications** - B2B solutions, industry-specific AI
-      10. **Funding & Market Dynamics** - Investments, acquisitions, valuations
-      11. **Policy & Regulation** - Government policies, AI governance, ethics
-      12. **Open Source & Community** - Open source projects, community developments
-
-      ## CONTENT REQUIREMENTS:
-
-      For each news item, provide:
-      1. **Clear Headline**: Informative title that captures the key development
-      2. **Analytical Summary (4-6 sentences)**:
-         - What happened (core news and context)
-         - Technical details, key specifications, or metrics
-         - Why it matters (industry significance and impact)
-         - Potential implications (future developments, competitive landscape)
-      3. **Source Attribution**: Always include as clickable markdown link: [Source Name](URL)
-
-      ## WRITING STYLE:
-      - Professional, analytical tone suitable for industry professionals
-      - Include specific numbers, metrics, and data points when available
-      - Keep technical terminology accurate (preserve technical jargon)
-      - Balance accessibility with technical depth
-      - Provide context and analysis, not just reporting facts
-
-      ## EXAMPLE FORMAT:
-
-      ## Large Language Models & Foundation Models
-
-      ### OpenAI Releases GPT-5 with Revolutionary Capabilities
-
-      OpenAI has announced GPT-5, featuring a 10 trillion parameter architecture with unprecedented reasoning abilities. The model demonstrates 40% improvement on complex reasoning benchmarks and introduces native multimodal understanding. This release marks a significant leap in AI capability, potentially reshaping competitive dynamics in the LLM market. Enterprise customers report 3x productivity gains in early testing, suggesting immediate practical applications.
-
-      Source: [OpenAI Blog](https://openai.com/blog/gpt-5)
-
-      ---
-
-      ## QUALITY REQUIREMENTS:
-      - ✅ Summarize ALL {count} items provided above (no skipping)
-      - ✅ Each summary must be exactly 4-6 sentences
-      - ✅ Include specific numbers, metrics, and data when available
-      - ✅ Maintain balanced coverage across different categories
-      - ✅ Include both international and domestic news
-      - ✅ Prioritize accuracy over speculation
-      - ✅ All sources must have clickable markdown links
-
-      ## AVOID:
-      ❌ Generic statements without specifics
-      ❌ Summaries shorter than 4 sentences or longer than 6 sentences
-      ❌ Missing clickable links or improper markdown formatting
-      ❌ Skipping any news items
+      角色设定：
+      您是中国商飞营销中心的资深情报分析师。请针对预选出的 {count} 条新闻，撰写一份面向营销部、市场部及管理层的《全球航空营销动态日报》。
+      分类结构（仅保留有新闻的分类）：
+      【竞争情报】竞品签单、产能与价格动态 (侧重波音、空客)
+      【客户观察】航空公司机队规划与选型趋势 (侧重准客户洞察)
+      【运行环境】国际适航取证与行业监管准入 (侧重海外市场开拓)
+      【供应链预警】核心系统与发动机维护/交付动态 (侧重运行风险)
+      【低碳与未来】SAF燃料、绿色航空与前沿技术 (侧重品牌与未来竞争力)
+      【市场格局】宏观经济、地缘政治与产业政策 (侧重市场准入门槛)
+      内容要求（针对每条新闻）：
+      清晰标题： 准确反映事件本质的中文标题（如“波音 737 MAX 10 取证延期，利好竞品交付空档期”）。
+      分析性摘要 ：
+      核心事实： 发生了什么（包含机型、航司、具体数据等）。
+      营销相关性： [这是重点] 明确指出该新闻为什么营销中心需要关注（例如：竞争对手的交付空档为 C919 提供了哪些机会？某航司的退役计划是否意味着选型窗口？）。
+      潜在影响： 对商飞（ARJ21, C919, C929）相关细分市场的竞争格局有何中短期影响。
+      原文链接： 使用 Markdown 链接格式：查看原文。
+      写作风格：
+      专业且敏锐： 语言简练，具备商业嗅觉。
+      数据驱动： 尽量包含订单量、金额、座位数、油耗降幅、交付日期等具体数据。
+      关联商飞： 在保证客观的前提下，尽可能挖掘新闻对商飞项目的潜在启示、风险或机会点。
+      输出示例：
+      某东南亚廉航增购 50 架 A321neo，锁定该区域未来五年窄体机运力
+      东南亚某主要廉航近日宣布行使选权，增购 50 架 A320neo 系列飞机，主要型号为 A321neo。这一举措使其待交付订单总数达到 200 架，旨在通过单一机队策略降低运营成本。对于商飞营销中心而言，此动向表明东南亚市场竞争进一步白热化，主流航司对空客的依赖性加深，短期内切换新平台的门槛提高。 建议持续关注该地区非单一机队航司的替换需求，以及空客因供应链问题可能导致的交付延期，寻找 C919 的插队入场机会。
+      查看原文
+      质量要求：
+      ✅ 总结全部 {count} 条新闻，不得遗漏。
+      ✅ 每条摘要严格控制在 4-6 句话。
+      ✅ 严禁泛泛而谈，必须有具体数据支撑。
+      ✅ 确保 Markdown 链接格式正确。
+      ✅ 全部使用中文输出。
 
 logging:
   level: INFO

@@ -44,6 +44,10 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Generated web pages (runtime artifacts)
+web/aviation_news_*.html
+web/latest_*.html
+
 # Test coverage
 .coverage
 htmlcov/
