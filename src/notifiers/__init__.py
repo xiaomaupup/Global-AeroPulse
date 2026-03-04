@@ -6,7 +6,6 @@ from .webhook_notifier import WebhookNotifier
 from .slack_notifier import SlackNotifier
 from .telegram_notifier import TelegramNotifier
 from .discord_notifier import DiscordNotifier
-from .html_notifier import HTMLNotifier
 
 __all__ = [
     "EmailNotifier",
@@ -14,5 +13,4 @@ __all__ = [
     "SlackNotifier",
     "TelegramNotifier",
     "DiscordNotifier",
-    "HTMLNotifier",
 ]

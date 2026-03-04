@@ -15,7 +15,6 @@ from src.notifiers import (
     SlackNotifier,
     TelegramNotifier,
     DiscordNotifier,
-    HTMLNotifier,
 )
 
 
@@ -85,14 +84,6 @@ def main():
                 preview = news_digest[:500] + "..." if len(news_digest) > 500 else news_digest
                 logger.info(preview)
                 logger.info("-" * 60)
-
-                # Always generate a local HTML page for this language
-                logger.info(f"Generating local HTML page for {language.upper()} digest...")
-                html_notifier = HTMLNotifier()
-                if html_notifier.send(news_digest, language=language):
-                    logger.info(f"Local HTML page generated successfully for {language.upper()}")
-                else:
-                    logger.warning(f"Failed to generate local HTML page for {language.upper()}")
 
                 # Track notification results for this language
                 lang_results = {"sent": [], "failed": []}
