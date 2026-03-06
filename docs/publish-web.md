@@ -1,0 +1,88 @@
+# 将航空日报聚合页发布到公网（自定义域名 wittywiz.cc）
+
+本项目的 `web/index.html` 是纯静态页面，从 Supabase 拉取数据，适合用 **GitHub Pages** 免费托管，再绑定你在阿里云购买的域名 **wittywiz.cc**。
+
+---
+
+## 一、用 GitHub Pages 托管（免费）
+
+### 1. 开启 GitHub Pages 并选用 Actions 部署
+
+1. 打开仓库：<https://github.com/xiaomaupup/Global-AeroPulse>
+2. 点击 **Settings** → 左侧 **Pages**
+3. 在 **Build and deployment** 里：
+   - **Source** 选 **GitHub Actions**
+
+保存后，仓库里已有 workflow：**Deploy News Page to GitHub Pages**。每次你往 `main` 分支推送且改动了 `web/` 下的文件时，会自动把 `web/` 发布到 Pages。
+
+### 2. 手动触发一次部署（可选）
+
+- 打开 **Actions** → 选择 **Deploy News Page to GitHub Pages** → **Run workflow** → 选分支 **main** → Run
+- 跑完后，站点会出现在：`https://xiaomaupup.github.io/Global-AeroPulse/`
+
+此时已经可以公网访问，只是地址还是 GitHub 的。
+
+---
+
+## 二、绑定你的域名 wittywiz.cc（阿里云）
+
+建议用**子域名**绑定日报站，例如 **news.wittywiz.cc**，这样主站 `wittywiz.cc` 仍可作它用。
+
+### 1. 在 GitHub 里填自定义域名
+
+1. 仓库 **Settings** → **Pages**
+2. 在 **Custom domain** 里输入：`news.wittywiz.cc`
+3. 点 **Save**
+4. 若提示检查 DNS，可先不管，到下一步在阿里云配好 DNS 后再回来点 **Enforce HTTPS**（等证书生效后）
+
+### 2. 在阿里云配置 DNS 解析
+
+1. 登录 [阿里云控制台](https://dc.console.aliyun.com/) → **云解析 DNS**（或你购买域名时用的解析产品）
+2. 找到域名 **wittywiz.cc**，点击 **解析设置** / **解析**
+3. 新增一条记录：
+   - **记录类型**：`CNAME`
+   - **主机记录**：`news`（这样得到的是 `news.wittywiz.cc`；若填 `@` 则是根域名 `wittywiz.cc`）
+   - **记录值**：`xiaomaupup.github.io`
+   - **TTL**：10 分钟或默认
+4. 保存
+
+### 3. 等待生效
+
+- DNS 生效一般 5–30 分钟，有时更久
+- GitHub 会为 `news.wittywiz.cc` 自动申请 HTTPS 证书，生效后可在 Pages 设置里勾选 **Enforce HTTPS**
+
+完成后，用浏览器打开 **https://news.wittywiz.cc** 即可访问航空日报聚合页。
+
+---
+
+## 三、若要用根域名 wittywiz.cc 访问
+
+若希望直接使用 `https://wittywiz.cc` 作为日报站：
+
+1. 在 GitHub Pages 的 **Custom domain** 填：`wittywiz.cc`
+2. 在阿里云 DNS 添加：
+   - 类型 **CNAME**，主机记录 **@**，记录值 **xiaomaupup.github.io**
+
+注意：根域名绑定后，该域名就只能指向这个 Pages 站，不能再同时做其它网站（除非用 Nginx 等反向代理）。用子域名 `news.wittywiz.cc` 更灵活。
+
+---
+
+## 四、页面里用到的 Supabase
+
+- 当前 `web/index.html` 里写的是 Supabase 的 **anon（可公开）key**，前端直接请求 Supabase，**可以**放在公网。
+- 请勿把 **service_role key** 写进前端；若以后要改 API 或 key，只需改 `web/index.html` 里 `SUPABASE_URL` / `SUPABASE_ANON_KEY`，再推一次代码即可重新部署。
+
+---
+
+## 五、简要检查清单
+
+| 步骤 | 说明 |
+|------|------|
+| 1 | 仓库 Settings → Pages → Source 选 **GitHub Actions** |
+| 2 | 推送包含 `web/` 的提交，或手动 Run workflow **Deploy News Page to GitHub Pages** |
+| 3 | 访问 `https://xiaomaupup.github.io/Global-AeroPulse/` 确认能打开 |
+| 4 | Settings → Pages → Custom domain 填 **news.wittywiz.cc**（或 wittywiz.cc） |
+| 5 | 阿里云 DNS 添加 CNAME：news → xiaomaupup.github.io |
+| 6 | 等待 DNS + HTTPS 生效后访问 **https://news.wittywiz.cc** |
+
+如有报错，可到 **Actions** 里看 **Deploy News Page to GitHub Pages** 的日志排查。
