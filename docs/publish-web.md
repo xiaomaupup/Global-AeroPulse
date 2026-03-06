@@ -37,14 +37,14 @@
 
 ### 2. 在阿里云配置 DNS 解析
 
-1. 登录 [阿里云控制台](https://dc.console.aliyun.com/) → **云解析 DNS**（或你购买域名时用的解析产品）
-2. 找到域名 **wittywiz.cc**，点击 **解析设置** / **解析**
-3. 新增一条记录：
+1. 登录 [阿里云云解析控制台](https://dns.console.aliyun.com/)，在 **权威解析** 里找到域名 **wittywiz.cc**，点进去 **解析设置**。
+2. 若域名不在阿里云解析，需先把域名的 **DNS 服务器** 改为阿里云提供的 NS（在域名注册商处修改）。
+3. 点击 **添加记录**，按下面**一字不差**填写（尤其注意没有空格、没有 `https://`）：
    - **记录类型**：`CNAME`
-   - **主机记录**：`news`（这样得到的是 `news.wittywiz.cc`；若填 `@` 则是根域名 `wittywiz.cc`）
-   - **记录值**：`xiaomaupup.github.io`
-   - **TTL**：10 分钟或默认
-4. 保存
+   - **主机记录**：`news`（只填英文 `news`，不要填 `news.wittywiz.cc`；这样才会得到 `news.wittywiz.cc`）
+   - **记录值**：`xiaomaupup.github.io`（只填这个域名，不要加 `https://` 或结尾的 `/`）
+   - **TTL**：10 分钟
+4. 保存后，可在本机终端执行 `dig news.wittywiz.cc CNAME` 或 [站长工具 DNS 查询](https://tool.chinaz.com/dns) 检查是否已解析到 `xiaomaupup.github.io`。生效后再回 GitHub 保存自定义域名并勾选 Enforce HTTPS。
 
 ### 3. 等待生效
 
@@ -86,3 +86,23 @@
 | 6 | 等待 DNS + HTTPS 生效后访问 **https://news.wittywiz.cc** |
 
 如有报错，可到 **Actions** 里看 **Deploy News Page to GitHub Pages** 的日志排查。
+
+---
+
+## 六、常见报错：InvalidDNSError / "improperly configured"
+
+若 GitHub 提示 **Domain's DNS record could not be retrieved (InvalidDNSError)**，按下面逐项检查：
+
+1. **阿里云「主机记录」只填 `news`**  
+   不能填 `news.wittywiz.cc`，否则会变成 `news.wittywiz.cc.wittywiz.cc`。
+
+2. **「记录值」只填 `xiaomaupup.github.io`**  
+   不要带 `https://`、不要带结尾 `/`、不要有多余空格。
+
+3. **域名是否在用阿里云解析**  
+   若域名在别的平台购买且未接入阿里云解析，需在**域名注册商**处把 DNS 改为阿里云提供的 NS，或在当前管理域名的平台添加上述 CNAME。
+
+4. **等 DNS 生效后再在 GitHub 保存**  
+   添加/修改记录后等 5–30 分钟，在终端执行：  
+   `dig news.wittywiz.cc CNAME`  
+   或使用 [chinaz DNS 查询](https://tool.chinaz.com/dns?host=news.wittywiz.cc) 看是否返回 `xiaomaupup.github.io`。确认能解析后再在 GitHub Pages 里保存 Custom domain。
