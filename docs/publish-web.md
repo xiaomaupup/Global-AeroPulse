@@ -31,33 +31,70 @@
 
 ---
 
-## 二、绑定你的域名 wittywiz.cc（阿里云）
+## 二、绑定你的域名 wittywiz.cc
 
 建议用**子域名**绑定日报站，例如 **news.wittywiz.cc**，这样主站 `wittywiz.cc` 仍可作它用。
 
-### 1. 在 GitHub 里填自定义域名
+---
 
-1. 仓库 **Settings** → **Pages**
-2. 在 **Custom domain** 里输入：`news.wittywiz.cc`
-3. 点 **Save**
-4. 若提示检查 DNS，可先不管，到下一步在阿里云配好 DNS 后再回来点 **Enforce HTTPS**（等证书生效后）
+### 本项目专用：Cloudflare 完整配置步骤（推荐按此操作）
 
-### 2. 在 DNS 服务商处配置 CNAME（看清域名当前用的是哪家）
+若你打算用 **Cloudflare** 做解析（和另一个项目一致），按下面顺序做即可。
 
-你的 **wittywiz.cc** 若在 **Cloudflare** 解析（`dig` 里看到 `ns.cloudflare.com` / `cloudflare.com` 即表示在用 Cloudflare），请在 **Cloudflare** 添加记录，不要只在阿里云加。
+#### 第一步：在 Cloudflare 里「添加站点」（若列表里还没有 wittywiz.cc）
 
-#### 若域名在 Cloudflare 解析（常见）
+1. 打开 **https://dash.cloudflare.com/** 并登录。
+2. 点击 **Add a site**（添加站点），输入 **wittywiz.cc**，继续。
+3. 选择 **Free** 计划，继续。
+4. Cloudflare 会扫描该域名的现有解析记录（可能为空），扫描完后点 **Continue**。
+5. 接下来会看到 **Update your nameservers** 页面，给出两个 NS 地址，例如：
+   - `xxx.ns.cloudflare.com`
+   - `yyy.ns.cloudflare.com`  
+   **先不要关这个页面**，记下这两个地址（或保持页面开着）。
 
-1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/) → 选中域名 **wittywiz.cc**。
-2. 左侧 **DNS** → **Records** → **Add record**。
-3. 新增一条：
-   - **Type**：`CNAME`
-   - **Name**：`news`（只填 `news`，会得到 `news.wittywiz.cc`）
-   - **Target**：`xiaomaupup.github.io`
-   - **Proxy status**：建议先关掉（灰色云朵 **DNS only**），避免和 GitHub Pages 冲突；若之后要 CDN 再开。
-4. 保存后等 1～5 分钟，执行 `dig news.wittywiz.cc CNAME` 应能看到 `xiaomaupup.github.io`。再到 GitHub Settings → Pages → Custom domain 填 `news.wittywiz.cc` 并保存。
+#### 第二步：把域名的 DNS 服务器改成 Cloudflare 的
 
-#### 若域名在阿里云云解析
+1. 打开你**购买域名**的地方（例如阿里云域名控制台 **https://dc.console.aliyun.com/**）。
+2. 找到域名 **wittywiz.cc** → 点击 **管理** → 找到 **DNS 修改** / **修改 DNS 服务器**。
+3. 把原来的 DNS 服务器**改成**第一步里 Cloudflare 给的那两个（例如 `xxx.ns.cloudflare.com` 和 `yyy.ns.cloudflare.com`），保存。
+4. 等待几分钟到几小时生效。生效后，在 Cloudflare 里该站点状态会变成 **Active**（若仍是 Pending，多等一会儿或检查 NS 是否填对）。
+
+#### 第三步：在 Cloudflare 里添加 CNAME（把 news.wittywiz.cc 指到 GitHub Pages）
+
+1. 在 [Cloudflare Dashboard](https://dash.cloudflare.com/) 左侧选中域名 **wittywiz.cc**。
+2. 左侧菜单点 **DNS** → **Records**（记录）。
+3. 点 **Add record**（添加记录），按下面填写：
+   - **Type**：选 **CNAME**
+   - **Name**：填 **news**（只填英文 `news`，不要填 `news.wittywiz.cc`）
+   - **Target**：填 **xiaomaupup.github.io**
+   - **Proxy status**：选 **DNS only**（灰色云朵），不要开橙色云朵（否则可能和 GitHub Pages 校验冲突）
+   - **TTL**：保持 Auto 即可
+4. 点 **Save** 保存。
+
+#### 第四步：在 GitHub 里填自定义域名
+
+1. 打开仓库 **https://github.com/xiaomaupup/Global-AeroPulse** → **Settings** → 左侧 **Pages**。
+2. 在 **Custom domain** 输入框里填：**news.wittywiz.cc**，点 **Save**。
+3. 若提示 DNS 未通过，等 1～5 分钟再点一次 Save，或先执行下面「第五步」自检后再保存。
+4. 证书生效后，可勾选 **Enforce HTTPS**。
+
+#### 第五步：自检（可选）
+
+在终端执行：
+
+```bash
+dig news.wittywiz.cc CNAME
+```
+
+若 **ANSWER SECTION** 里出现 `news.wittywiz.cc. ... CNAME xiaomaupup.github.io.`，说明解析已生效。然后打开 **https://news.wittywiz.cc** 应能看到航空日报聚合页。
+
+---
+
+### 若你已确定域名在 Cloudflare，只需加一条 CNAME
+
+若 **wittywiz.cc** 早已在 Cloudflare 里且状态为 Active，只需做上面的 **第三步 + 第四步**：在 Cloudflare 加一条 CNAME（name=news, target=xiaomaupup.github.io, DNS only），再到 GitHub Pages 填 Custom domain。
+
+### 若域名在阿里云云解析（不用 Cloudflare）
 
 1. 登录 [阿里云云解析控制台](https://dns.console.aliyun.com/)，找到 **wittywiz.cc** → **解析设置**。
 2. **添加记录**：类型 `CNAME`，主机记录 `news`，记录值 `xiaomaupup.github.io`，TTL 10 分钟。
