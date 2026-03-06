@@ -35,16 +35,26 @@
 3. 点 **Save**
 4. 若提示检查 DNS，可先不管，到下一步在阿里云配好 DNS 后再回来点 **Enforce HTTPS**（等证书生效后）
 
-### 2. 在阿里云配置 DNS 解析
+### 2. 在 DNS 服务商处配置 CNAME（看清域名当前用的是哪家）
 
-1. 登录 [阿里云云解析控制台](https://dns.console.aliyun.com/)，在 **权威解析** 里找到域名 **wittywiz.cc**，点进去 **解析设置**。
-2. 若域名不在阿里云解析，需先把域名的 **DNS 服务器** 改为阿里云提供的 NS（在域名注册商处修改）。
-3. 点击 **添加记录**，按下面**一字不差**填写（尤其注意没有空格、没有 `https://`）：
-   - **记录类型**：`CNAME`
-   - **主机记录**：`news`（只填英文 `news`，不要填 `news.wittywiz.cc`；这样才会得到 `news.wittywiz.cc`）
-   - **记录值**：`xiaomaupup.github.io`（只填这个域名，不要加 `https://` 或结尾的 `/`）
-   - **TTL**：10 分钟
-4. 保存后，可在本机终端执行 `dig news.wittywiz.cc CNAME` 或 [站长工具 DNS 查询](https://tool.chinaz.com/dns) 检查是否已解析到 `xiaomaupup.github.io`。生效后再回 GitHub 保存自定义域名并勾选 Enforce HTTPS。
+你的 **wittywiz.cc** 若在 **Cloudflare** 解析（`dig` 里看到 `ns.cloudflare.com` / `cloudflare.com` 即表示在用 Cloudflare），请在 **Cloudflare** 添加记录，不要只在阿里云加。
+
+#### 若域名在 Cloudflare 解析（常见）
+
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/) → 选中域名 **wittywiz.cc**。
+2. 左侧 **DNS** → **Records** → **Add record**。
+3. 新增一条：
+   - **Type**：`CNAME`
+   - **Name**：`news`（只填 `news`，会得到 `news.wittywiz.cc`）
+   - **Target**：`xiaomaupup.github.io`
+   - **Proxy status**：建议先关掉（灰色云朵 **DNS only**），避免和 GitHub Pages 冲突；若之后要 CDN 再开。
+4. 保存后等 1～5 分钟，执行 `dig news.wittywiz.cc CNAME` 应能看到 `xiaomaupup.github.io`。再到 GitHub Settings → Pages → Custom domain 填 `news.wittywiz.cc` 并保存。
+
+#### 若域名在阿里云云解析
+
+1. 登录 [阿里云云解析控制台](https://dns.console.aliyun.com/)，找到 **wittywiz.cc** → **解析设置**。
+2. **添加记录**：类型 `CNAME`，主机记录 `news`，记录值 `xiaomaupup.github.io`，TTL 10 分钟。
+3. 保存后同上，用 `dig` 确认再在 GitHub 保存 Custom domain。
 
 ### 3. 等待生效
 
@@ -99,8 +109,8 @@
 2. **「记录值」只填 `xiaomaupup.github.io`**  
    不要带 `https://`、不要带结尾 `/`、不要有多余空格。
 
-3. **域名是否在用阿里云解析**  
-   若域名在别的平台购买且未接入阿里云解析，需在**域名注册商**处把 DNS 改为阿里云提供的 NS，或在当前管理域名的平台添加上述 CNAME。
+3. **域名实际在用哪家 DNS**  
+   用 `dig news.wittywiz.cc` 看返回里的 **AUTHORITY SECTION**：若出现 `cloudflare.com` 说明是 **Cloudflare** 解析，要在 Cloudflare 控制台添加 CNAME；若是阿里云 NS 才在阿里云添加。域名在谁家解析，就要在谁家加记录。
 
 4. **等 DNS 生效后再在 GitHub 保存**  
    添加/修改记录后等 5–30 分钟，在终端执行：  
