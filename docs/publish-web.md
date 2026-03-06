@@ -4,6 +4,13 @@
 
 ---
 
+## 国内访问说明（重要）
+
+- **仅用阿里云解析**：只影响「域名解析」在国内的稳定与速度，**不能保证国内一定能正常打开网站**。因为页面内容仍从 **GitHub Pages**（境外）拉取，国内访问 GitHub 有时会慢或不稳定。
+- **若需要国内稳定、公开访问**：应把**网站内容放到国内**，例如 **阿里云 OSS + CDN**，域名用阿里云解析指到阿里云。这样解析和内容都在国内，国内访问才可靠。具体做法见文末「国内访问方案：阿里云 OSS + CDN」。
+
+---
+
 ## 一、用 GitHub Pages 托管（免费）
 
 ### 1. 开启 GitHub Pages 并选用 Actions 部署
@@ -55,6 +62,21 @@
 1. 登录 [阿里云云解析控制台](https://dns.console.aliyun.com/)，找到 **wittywiz.cc** → **解析设置**。
 2. **添加记录**：类型 `CNAME`，主机记录 `news`，记录值 `xiaomaupup.github.io`，TTL 10 分钟。
 3. 保存后同上，用 `dig` 确认再在 GitHub 保存 Custom domain。
+
+#### 若在 Cloudflare 里看不到该域名（NS 却是 Cloudflare）
+
+说明域名可能在其他 Cloudflare 账号下，或由注册商预置。**可改为用阿里云解析**（域名在阿里云购买时推荐）：
+
+1. **在阿里云云解析里先添加域名**  
+   登录 [云解析 DNS](https://dns.console.aliyun.com/) → 权威解析 → 添加域名 → 输入 `wittywiz.cc`，添加后记下分配的 **DNS 服务器**（如 `vip1.alidns.com`、`vip2.alidns.com`，以控制台显示为准）。
+
+2. **把域名的 NS 改到阿里云**  
+   登录 [阿里云域名控制台](https://dc.console.aliyun.com/) → 域名列表 → 找到 **wittywiz.cc** → 点击 **管理** → **DNS 修改** → 选择「使用 阿里云 DNS」或「自定义 DNS」，填入上一步的 NS 地址 → 保存。（生效通常几分钟到几小时。）
+
+3. **在云解析里添加 CNAME**  
+   回到 [云解析 DNS](https://dns.console.aliyun.com/) → 选择 **wittywiz.cc** → 解析设置 → 添加记录：类型 `CNAME`，主机记录 `news`，记录值 `xiaomaupup.github.io`，TTL 10 分钟 → 保存。
+
+4. 等 5～30 分钟后执行 `dig news.wittywiz.cc CNAME` 确认解析到 `xiaomaupup.github.io`，再在 GitHub Pages 里保存 Custom domain。
 
 ### 3. 等待生效
 
@@ -116,3 +138,30 @@
    添加/修改记录后等 5–30 分钟，在终端执行：  
    `dig news.wittywiz.cc CNAME`  
    或使用 [chinaz DNS 查询](https://tool.chinaz.com/dns?host=news.wittywiz.cc) 看是否返回 `xiaomaupup.github.io`。确认能解析后再在 GitHub Pages 里保存 Custom domain。
+
+---
+
+## 七、国内访问方案：阿里云 OSS + CDN（可选）
+
+若需要**中国国内稳定、公开访问**，建议把同一套静态页面放到**阿里云 OSS**（并可选开通 CDN），用阿里云解析把 `news.wittywiz.cc` 指到阿里云。这样解析和内容都在国内，国内访问才可靠。
+
+**前提**：在中国大陆对自定义域名使用 OSS 国内节点或 CDN 国内节点，通常要求该域名已完成 **ICP 备案**（在阿里云备案或接入备案）。若 `wittywiz.cc` 尚未备案，需先在阿里云完成备案后再按下面操作。
+
+**简要步骤**（具体以阿里云控制台为准）：
+
+1. **创建 OSS 存储桶**  
+   登录 [对象存储 OSS](https://oss.console.aliyun.com/) → 创建 Bucket，地域选国内（如华东1），读写权限选**公共读**。
+
+2. **开启静态页面托管**  
+   进入该 Bucket → 基础设置 → 静态页面托管 → 设置默认首页为 `index.html`。
+
+3. **上传网站文件**  
+   把本仓库 `web/` 目录下的 `index.html`、`CNAME`（可选，OSS 绑定自定义域名时不依赖此文件）等上传到 Bucket 根目录。
+
+4. **绑定自定义域名并开启 HTTPS**  
+   在 Bucket 的「传输管理」或「域名管理」中绑定 `news.wittywiz.cc`，并开启 HTTPS（阿里云可申请免费证书）。若使用 **CDN**，则在 CDN 控制台添加域名、源站选择该 OSS Bucket，再在 CDN 上绑定 `news.wittywiz.cc` 和证书，可加速全国访问。
+
+5. **阿里云解析**  
+   在 [云解析 DNS](https://dns.console.aliyun.com/) 中，为 `wittywiz.cc` 添加记录：主机记录 `news`，类型 CNAME，记录值填 OSS 或 CDN 提供的**目标域名**（如 `xxx.oss-cn-hangzhou.aliyuncs.com` 或 CDN 分配的 CNAME），保存后等待生效。
+
+完成后，国内用户访问 `https://news.wittywiz.cc` 将直接命中阿里云（及 CDN），不再依赖 GitHub，访问更稳定。部署更新时，只需重新上传 `web/` 下变更后的文件即可。
